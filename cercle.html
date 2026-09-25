@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Cercle</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 20px; }
+        .wrapper { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+        .canvas-card { background: #222; padding: 15px; border-radius: 12px; border: 2px solid #444; }
+        
+        #graph-container, #error-container { 
+            width: 400px; 
+            height: 400px; 
+            background: #0a0a0a; 
+            margin: 10px auto; 
+            border: 2px solid #555; 
+            border-radius: 8px; 
+        }
+        
+        .stats { font-size: 1.1em; color: #00ff00; font-family: monospace; background: #000; padding: 10px; display: inline-block; border-radius: 5px; margin-bottom: 15px; }
+        h2 { margin: 5px 0; font-size: 1.2em; color: #ddd; }
+        
+        .table-card { background: #222; padding: 15px; border-radius: 12px; border: 2px solid #444; width: 360px; height: 450px; display: flex; flex-direction: column; }
+        .table-container { overflow-y: auto; flex-grow: 1; margin-top: 10px; border: 1px solid #555; border-radius: 6px; }
+        table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 0.82em; }
+        th, td { padding: 8px 4px; text-align: center; border-bottom: 1px solid #333; }
+        th { background-color: #333; color: #ffcc00; position: sticky; top: 0; }
+        tr:nth-child(even) { background-color: #1a1a1a; }
+        tr:nth-child(odd) { background-color: #262626; }
+
+        .btn-download {
+            margin-top: 10px;
+            padding: 10px 15px;
+            background-color: #ffcc00;
+            color: #111;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-download:hover { background-color: #e6b800; }
+    </style>
+</head>
+<body>
+
+    <h1>Looping Circular — Pèrdua d'Energia i Forces G (10 Oscil·lacions)</h1>
+    <div class="stats" id="marcador">v: 0 m/s | E_mec: 0 J/kg | ΔE: 0 J/kg | Forces G: 0 g</div>
+
+    <div class="wrapper">
+        <div class="canvas-card">
+            <h2>Trajectòria Circular x² + y² = 25</h2>
+            <div id="graph-container"></div>
+        </div>
+        <div class="canvas-card">
+            <h2>Pèrdua d'Energia Mecànica (ΔE) vs Temps</h2>
+            <div id="error-container"></div>
+        </div>
+        <div class="table-card">
+            <h2>Registre (cada 10s)</h2>
+            <div class="table-container">
+                <table id="taula-errors">
+                    <thead>
+                        <tr>
+                            <th>Temps (s)</th>
+                            <th>E_mec (J/kg)</th>
+                            <th>ΔE (J/kg)</th>
+                            <th>Forces G</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+            <button class="btn-download" onclick="descarregarCSV()">Descarregar (.csv)</button>
+        </div>
+    </div>
+
+    <script>
+    var registreFitxer = [["Temps (s)", "Energia Mecanica (J/kg)", "Perdua Energia (J/kg)", "Forces G (g)"]];
+
+    var Graph = (function() {
+        function G(id, titleY, titleX) {
+            this.el = document.getElementById(id);
+            this.canvas = document.createElement('canvas');
+            this.el.appendChild(this.canvas);
+            this.ctx = this.canvas.getContext('2d');
+            this.series = [];
+            this.titleY = titleY || "";
+            this.titleX = titleX || "";
+            this.minX = -7; this.maxX = 7;
+            this.minY = -7; this.maxY = 7;
+            this.vectorG = null; // Guardarà la posició del vector de forces g
+            this.resize();
+        }
+        G.prototype.resize = function() {
+            this.canvas.width = this.el.clientWidth;
+            this.canvas.height = this.el.clientHeight;
+        };
+        G.prototype.getXAxis = function() { 
+            var self = this;
+            return { setBoundaries: function(s, e) { self.minX = s; self.maxX = e; } }; 
+        };
+        G.prototype.getYAxis = function() { 
+            var self = this;
+            return { setBoundaries: function(s, e) { self.minY = s; self.maxY = e; } }; 
+        };
+        G.prototype.newSerie = function(name, opt) {
+            var s = { name: name, opt: opt, data: [], setData: function(d) { this.data = d; } };
+            this.series.push(s);
+            return s;
+        };
+        G.prototype.setVectorG = function(v) {
+            this.vectorG = v;
+        };
+        G.prototype.draw = function() {
+            var ctx = this.ctx;
+            var w = this.canvas.width;
+            var h = this.canvas.height;
+            var margin = 45;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Graella de fons
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let x = margin; x < w; x += 50) { ctx.moveTo(x, 0); ctx.lineTo(x, h - margin); }
+            for (let y = 0; y < h - margin; y += 50) { ctx.moveTo(margin, y); ctx.lineTo(w, h - margin); }
+            ctx.stroke();
+
+            // Eixos principals
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(margin, 0); ctx.lineTo(margin, h - margin);
+            ctx.moveTo(margin, h - margin); ctx.lineTo(w, h - margin);
+            ctx.stroke();
+
+            // Etiquetes dels eixos
+            ctx.fillStyle = '#aaa';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(this.titleY, margin + 5, 15);
+            ctx.fillText(this.titleX, w - 60, h - margin - 8);
+
+            if (this.minX !== undefined && this.maxX !== undefined) {
+                ctx.fillText(this.minX.toFixed(1), margin, h - margin + 15);
+                ctx.fillText(this.maxX.toFixed(1), w - 45, h - margin + 15);
+            }
+
+            if (this.minY === undefined || this.maxY === undefined) return;
+
+            let rangeX = (this.maxX - this.minX) || 1;
+            let rangeY = (this.maxY - this.minY) || 1;
+
+            // Dibuix de sèries
+            this.series.forEach(s => {
+                if (s.data.length < 2) return;
+
+                if (s.opt.type === 'scatter') {
+                    ctx.fillStyle = s.opt.marker ? s.opt.marker.color : '#ff4444';
+                    for (var i = 0; i < s.data.length; i += 2) {
+                        var px = margin + ((s.data[i] - this.minX) / rangeX) * (w - margin - 15);
+                        var py = (h - margin) - ((s.data[i+1] - this.minY) / rangeY) * (h - margin - 25);
+                        ctx.beginPath();
+                        ctx.arc(px, py, s.opt.marker.radius || 6, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else {
+                    ctx.beginPath();
+                    ctx.strokeStyle = s.opt.lineColor || '#00ff00';
+                    ctx.lineWidth = s.opt.lineWidth || 2;
+                    for (var i = 0; i < s.data.length; i += 2) {
+                        var px = margin + ((s.data[i] - this.minX) / rangeX) * (w - margin - 15);
+                        var py = (h - margin) - ((s.data[i+1] - this.minY) / rangeY) * (h - margin - 25);
+                        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                    }
+                    ctx.stroke();
+                }
+            });
+
+            // Dibuix del vector de Forces G
+            if (this.vectorG) {
+                var vg = this.vectorG;
+                var x0 = margin + ((vg.x - this.minX) / rangeX) * (w - margin - 15);
+                var y0 = (h - margin) - ((vg.y - this.minY) / rangeY) * (h - margin - 25);
+                
+                // Escalat visual del vector
+                var factorEscala = 12; 
+                var x1 = x0 + (vg.nx * vg.gVal) * factorEscala;
+                var y1 = y0 - (vg.ny * vg.gVal) * factorEscala; 
+
+                ctx.strokeStyle = '#ff9900';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+                ctx.stroke();
+
+                // Cap de la fletxa
+                var angle = Math.atan2(y1 - y0, x1 - x0);
+                ctx.fillStyle = '#ff9900';
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x1 - 8 * Math.cos(angle - Math.PI / 6), y1 - 8 * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(x1 - 8 * Math.cos(angle + Math.PI / 6), y1 - 8 * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fill();
+            }
+        };
+        return G;
+    })();
+
+window.onload = function() {
+    const graph = new Graph("graph-container", "Posició Y (m)", "Posició X (m)");
+    graph.getXAxis().setBoundaries(-7, 7);
+    graph.getYAxis().setBoundaries(-7, 7);
+
+    const graphEnergia = new Graph("error-container", "Pèrdua d'Energia ΔE (J/kg)", "Temps (s)");
+    graphEnergia.getXAxis().setBoundaries(0, 0.1); 
+    graphEnergia.getYAxis().setBoundaries(0, 0.001); 
+
+    const RADI_TEORIC = 5.000000; 
+    const centrex = 0.0, centrey = 0.0; 
+
+    const via = graph.newSerie("via", { lineColor: '#4444ff', lineWidth: 2 });
+    let dadesVia = [];
+    for (let t = 0; t <= 2 * Math.PI + 0.01; t += 0.005) {
+        dadesVia.push(centrex + RADI_TEORIC * Math.cos(t), centrey + RADI_TEORIC * Math.sin(t));
+    }
+    via.setData(dadesVia);
+
+    const vagoneta = graph.newSerie("vagoneta", { type: 'scatter', marker: { color: '#ff4444', radius: 8 } });
+    const serieEnergia = graphEnergia.newSerie("perduaEnergia", { lineColor: '#ffcc00', lineWidth: 2 });
+    let dadesEnergia = [];
+
+    const cosTaula = document.querySelector("#taula-errors tbody");
+    const contenidorTaula = document.querySelector(".table-container");
+
+    let x = 0.0; let y = -5.0; 
+    let velocitatx = 16; let velocitaty = 0.0; 
+    const g = 9.81;
+
+    const subSteps = 1002; 
+    const augmentdetemps = 0.016 / subSteps; 
+    let tempsTotal = 0;
+
+    let darrerInterval10s = 0;
+    let oscil·lacions = 0;
+    let estatQuadrant = 0; 
+
+    const v0_sq = velocitatx * velocitatx + velocitaty * velocitaty;
+    const E_mecanica_inicial = 0.5 * v0_sq + g * y;
+
+    let maxPerduaTrobat = 0.0001;
+
+    function animar() {
+        let ax = 0, ay = 0;
+        let vector_normal_unitari_x = 0, vector_normal_unitari_y = 0;
+        let an = 0;
+
+        for (let s = 0; s < subSteps; s++) {
+            let distCalculada = Math.sqrt(x * x + y * y);
+
+            vector_normal_unitari_x = x / distCalculada;
+            vector_normal_unitari_y = y / distCalculada;
+
+            let v_sq = velocitatx * velocitatx + velocitaty * velocitaty;
+            let g_component = -g * vector_normal_unitari_y;
+            
+            an = (v_sq / RADI_TEORIC) + g_component;
+
+            ax = -an * vector_normal_unitari_x;
+            ay = -an * vector_normal_unitari_y - g;
+
+            velocitatx += ax * augmentdetemps;
+            velocitaty += ay * augmentdetemps;
+
+            x += velocitatx * augmentdetemps;
+            y += velocitaty * augmentdetemps;
+
+            tempsTotal += augmentdetemps;
+
+            // Detecció de les 10 oscil·lacions
+            if (estatQuadrant === 0 && y > 2.0) {
+                estatQuadrant = 1;
+            } else if (estatQuadrant === 1 && y < -4.5 && velocitatx > 0) {
+                oscil·lacions++;
+                estatQuadrant = 0;
+            }
+        }
+
+        let v_sq_actual = velocitatx * velocitatx + velocitaty * velocitaty;
+        let E_mecanica_actual = 0.5 * v_sq_actual + g * y;
+        let perduaEnergia = Math.abs(E_mecanica_inicial - E_mecanica_actual);
+
+        // Càlcul de Forces G sentides pel passatger (Acceleració Normal / g)
+        let forcesG = an / g;
+
+        dadesEnergia.push(tempsTotal, perduaEnergia);
+
+        if (tempsTotal >= darrerInterval10s + 10) {
+            darrerInterval10s += 10;
+            
+            let fila = document.createElement("tr");
+            fila.innerHTML = `<td>${darrerInterval10s} s</td><td>${E_mecanica_actual.toFixed(4)}</td><td>${perduaEnergia.toFixed(6)}</td><td>${forcesG.toFixed(2)} g</td>`;
+            cosTaula.appendChild(fila);
+
+            registreFitxer.push([darrerInterval10s, E_mecanica_actual.toFixed(6), perduaEnergia.toFixed(6), forcesG.toFixed(4)]);
+            contenidorTaula.scrollTop = contenidorTaula.scrollHeight;
+        }
+
+        graphEnergia.getXAxis().setBoundaries(0, Math.max(tempsTotal, 0.1));
+
+        if (perduaEnergia > maxPerduaTrobat) {
+            maxPerduaTrobat = perduaEnergia;
+            graphEnergia.getYAxis().setBoundaries(0, maxPerduaTrobat * 1.5);
+        }
+
+        marcador.innerText = `Oscil·lacions: ${oscil·lacions}/10 | v: ${Math.sqrt(v_sq_actual).toFixed(2)} m/s | E_mec: ${E_mecanica_actual.toFixed(3)} J/kg | ΔE: ${perduaEnergia.toFixed(6)} J/kg | Forces G: ${forcesG.toFixed(2)} g`;
+        
+        vagoneta.setData([x, y]);
+
+        // Assignació de les dades del vector de forces g
+        graph.setVectorG({
+            x: x,
+            y: y,
+            nx: vector_normal_unitari_x,
+            ny: vector_normal_unitari_y,
+            gVal: forcesG
+        });
+
+        graph.draw();
+
+        serieEnergia.setData(dadesEnergia);
+        graphEnergia.draw();
+
+        // Aturada a les 10 oscil·lacions
+        if (oscil·lacions >= 10) {
+            let v_sq_final = velocitatx * velocitatx + velocitaty * velocitaty;
+            let E_final = 0.5 * v_sq_final + g * y;
+            let difAbsolutaE = Math.abs(E_mecanica_inicial - E_final);
+            let difPercentualE = (difAbsolutaE / Math.abs(E_mecanica_inicial)) * 100;
+
+            marcador.innerHTML = `
+                <b style="color:#00ff00">10 OSCIL·LACIONS COMPLETADES</b><br>
+                E_inicial: <b>${E_mecanica_inicial.toFixed(6)} J/kg</b> | E_final: <b>${E_final.toFixed(6)} J/kg</b><br>
+                Pèrdua Total (ΔE): <b>${difAbsolutaE.toFixed(6)} J/kg</b> | 
+                Pèrdua %: <b>${difPercentualE.toFixed(6)} %</b>
+            `;
+            return;
+        }
+        
+        requestAnimationFrame(animar);
+    }
+    animar();
+}
+
+function descarregarCSV() {
+    let contingutCSV = "data:text/csv;charset=utf-8,";
+    registreFitxer.forEach(function(rowArray) {
+        let row = rowArray.join(";");
+        contingutCSV += row + "\r\n";
+    });
+    var encodedUri = encodeURI(contingutCSV);
+    var link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "perdua_energia_10_oscil·lacions.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+    </script>
+</body>
+</html>

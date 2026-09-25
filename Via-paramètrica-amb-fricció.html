@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulació TdR: Via Paramètrica amb Fricció de Coulomb i Forces G</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 20px; }
+        .container { max-width: 950px; margin: 0 auto; }
+        #graph-container { width: 850px; height: 500px; background: #ffffff; margin: 15px auto; border: 4px solid #555; border-radius: 12px; position: relative; }
+        canvas { width: 100%; height: 100%; border-radius: 8px; }
+        .panel { background: #000; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 1em; color: #00ff00; margin-bottom: 10px; display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .controls { background: #2a2a2a; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
+        label { font-weight: bold; margin-right: 10px; }
+        input[type="range"] { vertical-align: middle; width: 200px; }
+        button { background: #ff4444; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #ff6666; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Simulació amb Fricció de Coulomb i Forces G</h1>
+        
+        <div class="controls">
+            <label for="friccioSlider">Coeficient de Fricció (µ): <span id="valMu">0.05</span></label>
+            <input type="range" id="friccioSlider" min="0" max="0.3" step="0.01" value="0.05">
+            <button id="btnReset" style="margin-left: 20px;">Reiniciar Vagó</button>
+        </div>
+
+        <div class="panel">
+            <div id="txtVel">Velocitat: 0.00 m/s</div>
+            <div id="txtG">Força G: 1.00 G</div>
+            <div id="txtMaxG" style="color: #ffff00;">G Màxima: 1.00 G</div>
+            <div id="txtStatus">Estat: En moviment</div>
+        </div>
+
+        <div id="graph-container">
+            <canvas id="simCanvas" width="850" height="500"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Elements de control d'interfície
+        const sliderMu = document.getElementById('friccioSlider');
+        const valMu = document.getElementById('valMu');
+        const btnReset = document.getElementById('btnReset');
+        
+        const txtVel = document.getElementById('txtVel');
+        const txtG = document.getElementById('txtG');
+        const txtMaxG = document.getElementById('txtMaxG');
+        const txtStatus = document.getElementById('txtStatus');
+
+        // --- 1. CONFIGURACIÓ DE L'ESTAT FÍSIC ---
+        let t = -6.5; 
+        let dt_par = 0; 
+        const g = 9.81;
+        const subSteps = 200; 
+        const dt = 0.016 / subSteps; 
+        let mu = parseFloat(sliderMu.value);
+        let maxG = 1.0; // Variable per registrar la força G màxima
+
+        // Funció per injectar una velocitat real inicial de 2 m/s
+        function inicialitzarVelocitat() {
+            t = -6.5;
+            maxG = 1.0; 
+            let dx = 1.4 + 6 * Math.cos(t);
+            let dy = -5 * Math.sin(t);
+            let normaDerivada = Math.sqrt(dx * dx + dy * dy);
+            
+            if (normaDerivada > 0.0001) {
+                dt_par = 2.2 / normaDerivada;
+            } else {
+                dt_par = 0;
+            }
+        }
+        inicialitzarVelocitat();
+
+        // --- 2. PRECALCUL DE LA VIA PER AL DIBUIX FIX ---
+        const viaPoints = [];
+        for (let i = -6.5; i <= 6.5; i += 0.02) {
+            viaPoints.push({
+                x: 1.4 * i + 6 * Math.sin(i),
+                y: 5 * Math.cos(i)
+            });
+        }
+
+        // --- 3. BUCLE PRINCIPAL D'ANIMACIÓ ---
+        function animar() {
+            let forcesG_actuals = 1.0;
+            let v_real = 0;
+            let quiet = false;
+
+            // MOTOR FÍSIC AMB SUBSTEPS (Integració d'Euler + Fricció de Coulomb)
+            for (let s = 0; s < subSteps; s++) {
+                // Derivades primeres i segones per a x(t) = 1.4t + 6*sin(t), y(t) = 5*cos(t)
+                let x1 = 1.4 + 6 * Math.cos(t);   // x'
+                let y1 = -5 * Math.sin(t);      // y'
+                let x2 = -6 * Math.sin(t);      // x''
+                let y2 = -5 * Math.cos(t);      // y''
+
+                let den = x1 * x1 + y1 * y1;
+                
+                // 1. Acceleració base del paràmetre 
+                let ddt_base = (-g * y1 - (dt_par * dt_par) * (x1 * x2 + y1 * y2)) / den;
+
+                // 2. Càlcul de la Normal real corregida per la força centrípeta
+                let N_sobre_m = (g * x1 + (dt_par * dt_par) * (x2 * y1 - y2 * x1)) / Math.sqrt(den);
+                let N_abs = Math.abs(N_sobre_m);
+
+                // Càlcul teòric de les forces G verticals
+                forcesG_actuals = N_abs / g;
+
+                // Actualització del registre de força G màxima
+                if (forcesG_actuals > maxG) {
+                    maxG = forcesG_actuals;
+                }
+
+                // 3. Aplicació de la Fricció segons l'estat del moviment
+                let ddt = 0;
+                if (Math.abs(dt_par) > 0.001) {
+                    let ddt_friccio = mu * Math.sign(dt_par) * N_abs / Math.sqrt(den);
+                    ddt = ddt_base - ddt_friccio;
+                } else {
+                    let maxim_estatic = mu * N_abs / Math.sqrt(den);
+                    if (Math.abs(ddt_base) > maxim_estatic) {
+                        ddt = ddt_base - Math.sign(ddt_base) * maxim_estatic;
+                    } else {
+                        ddt = 0;
+                        dt_par = 0;
+                        quiet = true;
+                    }
+                }
+
+                // Integració numèrica
+                dt_par += ddt * dt;
+                t += dt_par * dt;
+            }
+
+            // Reinici si arriba al final del tram o s'atura per complet fora del punt inicial
+            if (t > 6.5 || dt_par < -12) {
+                inicialitzarVelocitat();
+            }
+
+            // Mapeig de coordenades per centrar el circuit al Canvas
+            let carX = 1.4 * t + 6 * Math.sin(t);
+            let carY = 5 * Math.cos(t);
+            let plotCarX = 425 + carX * 30; 
+            let plotCarY = 250 - carY * 38;
+
+            // Neteja i dibuix del llenç
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // DIBUIX DE LA VIA
+            ctx.beginPath();
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 5;
+            for (let i = 0; i < viaPoints.length; i++) {
+                let plotX = 425 + viaPoints[i].x * 30;
+                let plotY = 250 - viaPoints[i].y * 38;
+                if (i === 0) ctx.moveTo(plotX, plotY);
+                else ctx.lineTo(plotX, plotY);
+            }
+            ctx.stroke();
+
+            // DIBUIX DEL VAGÓ
+            ctx.beginPath();
+            ctx.fillStyle = forcesG_actuals > 3.5 ? '#ff0000' : '#0077ff'; 
+            ctx.arc(plotCarX, plotCarY, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Càlcul final de la velocitat real
+            let x1_act = 1.4 + 6 * Math.cos(t);
+            let y1_act = -5 * Math.sin(t);
+            v_real = Math.abs(dt_par) * Math.sqrt(x1_act * x1_act + y1_act * y1_act);
+
+            // Actualització del panell de dades
+            txtVel.innerText = `Velocitat: ${v_real.toFixed(2)} m/s`;
+            txtG.innerText = `Força G: ${forcesG_actuals.toFixed(2)} G`;
+            txtMaxG.innerText = `G Màxima: ${maxG.toFixed(2)} G`;
+            
+            if (quiet) {
+                txtStatus.innerText = "Estat: Clavat per fricció";
+                txtStatus.style.color = "#ff4444";
+            } else {
+                txtStatus.innerText = "Estat: En moviment";
+                txtStatus.style.color = "#00ff00";
+            }
+
+            requestAnimationFrame(animar);
+        }
+
+        // Esdeveniments de control
+        sliderMu.addEventListener('input', (e) => {
+            mu = parseFloat(e.target.value);
+            valMu.innerText = mu.toFixed(2);
+        });
+
+        btnReset.addEventListener('click', () => {
+            inicialitzarVelocitat();
+        });
+
+        // Iniciar simulació
+        animar();
+    </script>
+</body>
+</html>

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulació TdR - Espiral Esfèrica amb Fregament i Peralt</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #0d1117;
+      font-family: sans-serif;
+    }
+    #hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #00ffcc;
+      background: rgba(13, 17, 23, 0.85);
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      border: 1px solid #00ffcc;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+    #hud b {
+      color: #ffffff;
+      font-size: 15px;
+      border-bottom: 1px solid #00ffcc;
+      display: block;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="hud">
+    <b>TELEMETRIA DEL VAGÓ</b>
+    Velocitat (<i>v</i>): <span id="val-v">0.00</span> m/s (<span id="val-kmh">0.0</span> km/h)<br>
+    Acceleració Centrípeta (<i>a</i><sub>n</sub>): <span id="val-an">0.00</span> m/s²<br>
+    Força Normal relativa (<i>N/m</i>): <span id="val-n">0.00</span> N/kg<br>
+    Sensació de càrrega: <span id="val-g">0.00</span> G<br>
+    Angle de Peralt (&alpha;): <span id="val-alpha">0.00</span>°
+  </div>
+
+  <!-- Llibreries Three.js i OrbitControls de CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script>
+    // ==========================================
+    // 1. PARÀMETRES FÍSICS I GEOMÈTRICS
+    // ==========================================
+    const g = 9.81;            // Gravetat (m/s²)
+    const R_esfera = 15;       // Radi de l'esfera (m)
+    const volta_espiral = 5;   // Nombre de voltes de l'espiral
+    const mu = 0.03;           // Coeficient de fregament (acer sobre acer)
+    
+    let v = 2.0;               // Velocitat inicial (m/s)
+    let u = 0.0;               // Posició a la via (paràmetre de 0.0 a 1.0)
+
+    // ==========================================
+    // 2. CONFIGURACIÓ DE L'ESCENA THREE.JS
+    // ==========================================
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(25, 12, 30);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // Il·luminació
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(20, 40, 20);
+    scene.add(dirLight);
+
+    // Esfera de referència transparent
+    const sphereGeo = new THREE.SphereGeometry(R_esfera, 32, 32);
+    const sphereMat = new THREE.MeshBasicMaterial({ color: 0x334466, wireframe: true, transparent: true, opacity: 0.12 });
+    scene.add(new THREE.Mesh(sphereGeo, sphereMat));
+
+    // ==========================================
+    // 3. GENERACIÓ DE LA VIA (ESPIRAL ESFÈRICA)
+    // ==========================================
+    const points = [];
+    const N_POINTS = 600;
+
+    for (let i = 0; i <= N_POINTS; i++) {
+      const t = i / N_POINTS;
+      const theta = 0.1 + t * (Math.PI - 0.2); // Angle de latitud (de dalt a baix)
+      const phi = t * Math.PI * 2 * volta_espiral; // Angle de longitud (voltes)
+
+      const x = R_esfera * Math.sin(theta) * Math.cos(phi);
+      const y = R_esfera * Math.cos(theta);
+      const z = R_esfera * Math.sin(theta) * Math.sin(phi);
+
+      points.push(new THREE.Vector3(x, y, z));
+    }
+
+    const curve = new THREE.CatmullRomCurve3(points);
+    const totalLength = curve.getLength();
+
+    // ==========================================
+    // 4. MALLETA DE LA VIA AMB PERALT (RIBBON)
+    // ==========================================
+    const trackWidth = 0.8;
+    const ribbonGeo = new THREE.BufferGeometry();
+    const positions = [];
+
+    for (let i = 0; i <= N_POINTS; i++) {
+      const t = i / N_POINTS;
+      const pt = curve.getPointAt(t);
+      const tangent = curve.getTangentAt(t).normalize();
+      const normalEsfera = pt.clone().normalize();
+
+      // Estimació de peralt inicial per a la malla visual de la via
+      const h_max = R_esfera;
+      const v_est = Math.sqrt(Math.max(0.1, 2 * g * (h_max - pt.y) + 4));
+      const a_n_est = (v_est * v_est) / R_esfera;
+      const alpha = Math.atan2(a_n_est, g);
+
+      const normalPeraltada = normalEsfera.clone().applyAxisAngle(tangent, alpha);
+      const binormalPeraltada = new THREE.Vector3().crossVectors(tangent, normalPeraltada).normalize();
+
+      const pLeft = pt.clone().addScaledVector(binormalPeraltada, -trackWidth / 2);
+      const pRight = pt.clone().addScaledVector(binormalPeraltada, trackWidth / 2);
+
+      positions.push(pLeft.x, pLeft.y, pLeft.z);
+      positions.push(pRight.x, pRight.y, pRight.z);
+    }
+
+    const indices = [];
+    for (let i = 0; i < N_POINTS; i++) {
+      const idx = i * 2;
+      indices.push(idx, idx + 1, idx + 2);
+      indices.push(idx + 1, idx + 3, idx + 2);
+    }
+
+    ribbonGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    ribbonGeo.setIndex(indices);
+    ribbonGeo.computeVertexNormals();
+
+    const trackMat = new THREE.MeshStandardMaterial({ color: 0xff4444, side: THREE.DoubleSide, roughness: 0.3 });
+    scene.add(new THREE.Mesh(ribbonGeo, trackMat));
+
+    // ==========================================
+    // 5. CREACIÓ DEL VAGÓ
+    // ==========================================
+    const cartGeo = new THREE.BoxGeometry(0.8, 0.5, 1.2);
+    const cartMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, metalness: 0.7, roughness: 0.2 });
+    const cart = new THREE.Mesh(cartGeo, cartMat);
+    scene.add(cart);
+
+    // ==========================================
+    // 6. BUCLE DE SIMULACIÓ FÍSICA I ANIMACIÓ
+    // ==========================================
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const dt = Math.min(clock.getDelta(), 0.05);
+
+      if (u < 1.0) {
+        // A. Geometria actual
+        const pos = curve.getPointAt(u);
+          const tangent = curve.getTangentAt(u).normalize();
+
+          // B. Càlculs Físics (Fregament i Peralt)
+          const a_n = (v * v) / R_esfera;
+          const cos_inclinacio = Math.sqrt(Math.max(0, 1 - tangent.y * tangent.y));
+          const N_especifica = g * cos_inclinacio + a_n; // (N/m)
+          const a_friccio = mu * N_especifica;
+
+          const a_gravetat_t = -g * tangent.y;
+          const a_t = a_gravetat_t - (v > 0 ? a_friccio : -a_friccio);
+
+          // C. Integració de velocitat i posició (Mètode d'Euler)
+          v += a_t * dt;
+          if (v < 0) v = 0; // Evita que el vagó reculi si la fricció el para
+
+          const ds = v * dt;
+          u += ds / totalLength;
+          if (u > 1.0) u = 1.0;
+
+          // D. Orientació Estabilitzada del Vagó (Sense Gimbal Flip)
+          cart.position.copy(pos);
+
+          const targetPoint = curve.getPointAt(Math.min(1.0, u + 0.001));
+          const forward = targetPoint.clone().sub(pos).normalize();
+
+          const normalEsfera = pos.clone().normalize();
+          const alpha = Math.atan2(a_n, g); // Angle de peralt variable
+
+          const upPeraltat = normalEsfera.clone().applyAxisAngle(forward, alpha);
+          const right = new THREE.Vector3().crossVectors(upPeraltat, forward).normalize();
+          const upReal = new THREE.Vector3().crossVectors(forward, right).normalize();
+
+          const matrix = new THREE.Matrix4();
+          matrix.makeBasis(right, upReal, forward);
+          cart.rotation.setFromRotationMatrix(matrix);
+
+          // E. Telemetria actualitzada
+          const forcesG = N_especifica / g;
+          document.getElementById('val-v').innerText = v.toFixed(2);
+          document.getElementById('val-kmh').innerText = (v * 3.6).toFixed(1);
+          document.getElementById('val-an').innerText = a_n.toFixed(2);
+          document.getElementById('val-n').innerText = N_especifica.toFixed(2);
+          document.getElementById('val-g').innerText = forcesG.toFixed(2);
+          document.getElementById('val-alpha').innerText = (alpha * (180 / Math.PI)).toFixed(1);
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      // Adaptació automàtica al canviar la mida de la finestra
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      animate();
+    </script>
+  </body>
+  </html>

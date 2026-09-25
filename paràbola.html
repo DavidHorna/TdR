@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulació de Fricció en la Paràbola (Historial Permanent)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        #simCanvas {
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        #hud {
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 1.1em;
+            background: #000000;
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            color: #00ff66;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>y=xx amb Fricció</h2>
+    <canvas id="simCanvas" width="650" height="460"></canvas>
+    <div id="hud">Carregant simulació...</div>
+
+    <script>
+    window.onload = function() {
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const hud = document.getElementById('hud');
+
+        const bounds = { minX: -6, maxX: 6, minY: -2, maxY: 30 };
+
+        function toPx(x, y) {
+            return {
+                x: (x - bounds.minX) / (bounds.maxX - bounds.minX) * (canvas.width - 80) + 40,
+                y: 220 - (y - bounds.minY) / (bounds.maxY - bounds.minY) * 180
+            };
+        }
+
+        const MAX_POTENCIA_ZOOM = 1100;
+
+        function potenciaToPx(x, potencia) {
+            let pxX = (x - bounds.minX) / (bounds.maxX - bounds.minX) * (canvas.width - 80) + 40;
+            let ràtioZoom = Math.min(1, potencia / MAX_POTENCIA_ZOOM);
+            let pxY = 430 - ràtioZoom * 150;
+            return { x: pxX, y: pxY };
+        }
+
+        let posX = -5.5;
+        let velX = 0;
+        const g = 100;
+        const mu = 0.12; 
+        const dt = 0.016;
+
+        // Historial acumulat sense límit de punts
+        const historial = [];
+
+        function calcularFriccio(x, vx) {
+            let pendent = 2 * x;
+            let velReal = Math.abs(vx * Math.sqrt(1 + pendent * pendent));
+            let normal = g / Math.sqrt(1 + pendent * pendent);
+            let potencia = (mu * normal) * velReal;
+            return { potencia, velReal, pendent };
+        }
+
+        function animar() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // EIXOS I FONS DE LA GRÀFICA
+            let origen = toPx(0, 0);
+            ctx.strokeStyle = '#252525';
+            ctx.lineWidth = 1;
+            
+            ctx.beginPath();
+            ctx.moveTo(origen.x, 0); ctx.lineTo(origen.x, canvas.height);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#333333';
+            ctx.beginPath();
+            ctx.moveTo(20, 245); ctx.lineTo(canvas.width - 20, 245);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#444444';
+            ctx.beginPath();
+            ctx.moveTo(40, 430); ctx.lineTo(canvas.width - 40, 430);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#222222';
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(40, 355); ctx.lineTo(canvas.width - 40, 355);
+            ctx.moveTo(40, 280); ctx.lineTo(canvas.width - 40, 280);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // VIA AMB GRADIENT
+            for (let x = -6; x <= 6; x += 0.05) {
+                let p1 = toPx(x, x * x);
+                let p2 = toPx(x + 0.05, (x + 0.05) * (x + 0.05));
+
+                let vAprox = Math.sqrt(Math.max(0, 2 * g * (30 - x * x)));
+                let f = calcularFriccio(x, vAprox);
+
+                let intensitat = Math.min(1, f.potencia / 1800); 
+                let r = Math.floor(255 * intensitat);
+                let gColor = Math.floor(255 * (1 - intensitat));
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.strokeStyle = `rgb(${r}, ${gColor}, 30)`;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+            }
+
+            // FÍSICA
+            let fActual = calcularFriccio(posX, velX);
+            let accGravetat = (-g * fActual.pendent) / (1 + fActual.pendent * fActual.pendent);
+            let limitFriccio = (mu * g) / (1 + fActual.pendent * fActual.pendent);
+            let accX = 0;
+
+            if (Math.abs(velX) > 0.05 || Math.abs(accGravetat) > limitFriccio) {
+                let accFriccio = -Math.sign(velX) * limitFriccio;
+                accX = (velX !== 0) ? (accGravetat + accFriccio) : accGravetat;
+            } else {
+                velX = 0;
+            }
+
+            velX += accX * dt;
+            posX += velX * dt;
+
+            // Enregistrar el punt sense cap límit de mida (no es fa .shift())
+            historial.push({ x: posX, potencia: fActual.potencia });
+
+            // DIBUIXAR TOTA LA CORBA ACUMULADA (Línia permanent)
+            ctx.beginPath();
+            ctx.strokeStyle = '#ff0044';
+            ctx.lineWidth = 3.5;
+            for (let i = 0; i < historial.length; i++) {
+                let pt = potenciaToPx(historial[i].x, historial[i].potencia);
+                if (i === 0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.stroke();
+
+            // BARRA INDICADORA SOBRE LA VAGONETA
+            let posPx = toPx(posX, posX * posX);
+            let ràtioBarra = Math.min(1, fActual.potencia / MAX_POTENCIA_ZOOM);
+            let alçadaBarra = ràtioBarra * 90;
+
+            ctx.fillStyle = '#ff0044';
+            ctx.fillRect(posPx.x - 5, posPx.y - 10 - alçadaBarra, 10, alçadaBarra);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(`${Math.round(fActual.potencia)} W`, posPx.x - 20, posPx.y - 16 - alçadaBarra);
+
+            // VAGONETA
+            ctx.beginPath();
+            ctx.arc(posPx.x, posPx.y, 7, 0, Math.PI * 2);
+            ctx.fillStyle = '#00e5ff';
+            ctx.fill();
+
+            // ETIQUETES
+            ctx.fillStyle = '#777777';
+            ctx.font = '11px sans-serif';
+            ctx.fillText("Trajectòria y = x²", 45, 25);
+            ctx.fillText("PERFIL D'ENERGIA PERMANENT (S'ACUMULA AMB EL TEMPS)", 45, 262);
+
+            hud.innerText = `Posició X: ${posX.toFixed(2)} m | Velocitat: ${fActual.velReal.toFixed(1)} m/s | Pèrdua: ${fActual.potencia.toFixed(0)} W`;
+
+            requestAnimationFrame(animar);
+        }
+
+        animar();
+    };
+    </script>
+</body>
+</html>
