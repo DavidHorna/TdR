@@ -23,7 +23,7 @@
         #hud {
             margin-top: 15px;
             font-family: monospace;
-            font-size: 1.1em;
+            font-size: 1.05em;
             background: #000000;
             padding: 10px 20px;
             border-radius: 6px;
@@ -34,7 +34,7 @@
 </head>
 <body>
 
-    <h2>y=xx amb Fricció</h2>
+    <h2>y=xx amb Fricció i Forces G</h2>
     <canvas id="simCanvas" width="650" height="460"></canvas>
     <div id="hud">Carregant simulació...</div>
 
@@ -68,6 +68,8 @@
         const mu = 0.12; 
         const dt = 0.016;
 
+        let maxGForce = 1.0; // Variable per registrar les G màximes
+
         // Historial acumulat sense límit de punts
         const historial = [];
 
@@ -75,8 +77,16 @@
             let pendent = 2 * x;
             let velReal = Math.abs(vx * Math.sqrt(1 + pendent * pendent));
             let normal = g / Math.sqrt(1 + pendent * pendent);
+            
+            // Càlcul del radi de curvatura per a y = x^2 -> R = (1 + y'²)^(3/2) / |y''|
+            let rCurvatura = Math.pow(1 + pendent * pendent, 1.5) / 2;
+            let aCentripeta = (velReal * velReal) / rCurvatura;
+            
+            // Força G total (acceleració normal total dividida per la gravetat base g)
+            let gForce = (normal + aCentripeta) / g;
+
             let potencia = (mu * normal) * velReal;
-            return { potencia, velReal, pendent };
+            return { potencia, velReal, pendent, gForce };
         }
 
         function animar() {
@@ -131,6 +141,12 @@
 
             // FÍSICA
             let fActual = calcularFriccio(posX, velX);
+            
+            // Actualitzar el màxim de Forces G registrades
+            if (fActual.gForce > maxGForce) {
+                maxGForce = fActual.gForce;
+            }
+
             let accGravetat = (-g * fActual.pendent) / (1 + fActual.pendent * fActual.pendent);
             let limitFriccio = (mu * g) / (1 + fActual.pendent * fActual.pendent);
             let accX = 0;
@@ -145,7 +161,7 @@
             velX += accX * dt;
             posX += velX * dt;
 
-            // Enregistrar el punt sense cap límit de mida (no es fa .shift())
+            // Enregistrar el punt
             historial.push({ x: posX, potencia: fActual.potencia });
 
             // DIBUIXAR TOTA LA CORBA ACUMULADA (Línia permanent)
@@ -183,7 +199,7 @@
             ctx.fillText("Trajectòria y = x²", 45, 25);
             ctx.fillText("PERFIL D'ENERGIA PERMANENT (S'ACUMULA AMB EL TEMPS)", 45, 262);
 
-            hud.innerText = `Posició X: ${posX.toFixed(2)} m | Velocitat: ${fActual.velReal.toFixed(1)} m/s | Pèrdua: ${fActual.potencia.toFixed(0)} W`;
+            hud.innerText = `Pos: ${posX.toFixed(2)}m | Vel: ${fActual.velReal.toFixed(1)}m/s | G: ${fActual.gForce.toFixed(2)}G (Màx: ${maxGForce.toFixed(2)}G)`;
 
             requestAnimationFrame(animar);
         }
