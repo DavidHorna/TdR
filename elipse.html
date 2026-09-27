@@ -79,7 +79,6 @@
             for (let y = 0; y < h - margin; y += 50) { ctx.moveTo(margin, y); ctx.lineTo(w, h - margin); }
             ctx.stroke();
 
-            // Eixos principals
             ctx.strokeStyle = '#666';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -87,7 +86,6 @@
             ctx.moveTo(margin, h - margin); ctx.lineTo(w, h - margin);
             ctx.stroke();
 
-            // Etiquetes dels eixos
             ctx.fillStyle = '#aaa';
             ctx.font = '12px sans-serif';
             ctx.fillText(this.titleY, margin + 5, 15);
@@ -103,7 +101,6 @@
             let rangeX = (this.maxX - this.minX) || 1;
             let rangeY = (this.maxY - this.minY) || 1;
 
-            // Dibuix de sèries
             this.series.forEach(s => {
                 if (s.data.length < 2) return;
 
@@ -151,7 +148,7 @@ window.onload = function() {
     let x = centrex + rx; 
     let y = centrey; 
     let velocitatx = 0; 
-    let velocitaty = 20; 
+    let velocitaty = 10; 
     const v_inicial = Math.sqrt(velocitatx * velocitatx + velocitaty * velocitaty);
     const g = 9.81;
     
