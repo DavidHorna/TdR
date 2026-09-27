@@ -39,7 +39,7 @@
             let dx_inici = 1.4 + 6 * Math.cos(t);
             let dy_inici = -5 * Math.sin(t);
             let norma = Math.sqrt(dx_inici * dx_inici + dy_inici * dy_inici);
-            dt_par = norma > 0.0001 ? 2/ norma : 0;
+            dt_par = norma > 0.0001 ? 5 / norma : 0;
         }
         inicialitzarVelocitat();
 
