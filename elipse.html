@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Elipse</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 20px; }
+        .wrapper { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+        .canvas-card { background: #222; padding: 15px; border-radius: 12px; border: 2px solid #444; }
+        
+        #graph-container { 
+            width: 550px; 
+            height: 550px; 
+            background: #0a0a0a; 
+            margin: 10px auto; 
+            border: 2px solid #555; 
+            border-radius: 8px; 
+        }
+        
+        .stats { font-size: 1.15em; color: #00ff00; font-family: monospace; background: #000; padding: 12px 20px; display: inline-block; border-radius: 5px; margin-bottom: 15px; border: 1px solid #444; }
+        h2 { margin: 5px 0; font-size: 1.2em; color: #ddd; }
+    </style>
+</head>
+<body>
+
+    <h1>Looping El·líptic — Velocitat i Forces G</h1>
+    <div class="stats" id="marcador">v₀: 0.00 m/s | v: 0.00 m/s | Forces G: 0.00 g | G Màxima: 0.00 g</div>
+
+    <div class="wrapper">
+        <div class="canvas-card">
+            <h2>Trajectòria El·líptica</h2>
+            <div id="graph-container"></div>
+        </div>
+    </div>
+
+    <script>
+    var Graph = (function() {
+        function G(id, titleY, titleX) {
+            this.el = document.getElementById(id);
+            this.canvas = document.createElement('canvas');
+            this.el.appendChild(this.canvas);
+            this.ctx = this.canvas.getContext('2d');
+            this.series = [];
+            this.titleY = titleY || "";
+            this.titleX = titleX || "";
+            this.minX = -6; this.maxX = 8;
+            this.minY = -7; this.maxY = 7;
+            this.resize();
+        }
+        G.prototype.resize = function() {
+            this.canvas.width = this.el.clientWidth;
+            this.canvas.height = this.el.clientHeight;
+        };
+        G.prototype.getXAxis = function() { 
+            var self = this;
+            return { setBoundaries: function(s, e) { self.minX = s; self.maxX = e; } }; 
+        };
+        G.prototype.getYAxis = function() { 
+            var self = this;
+            return { setBoundaries: function(s, e) { self.minY = s; self.maxY = e; } }; 
+        };
+        G.prototype.newSerie = function(name, opt) {
+            var s = { name: name, opt: opt, data: [], setData: function(d) { this.data = d; } };
+            this.series.push(s);
+            return s;
+        };
+        G.prototype.draw = function() {
+            var ctx = this.ctx;
+            var w = this.canvas.width;
+            var h = this.canvas.height;
+            var margin = 45;
+
+            ctx.clearRect(0, 0, w, h);
+
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let x = margin; x < w; x += 50) { ctx.moveTo(x, 0); ctx.lineTo(x, h - margin); }
+            for (let y = 0; y < h - margin; y += 50) { ctx.moveTo(margin, y); ctx.lineTo(w, h - margin); }
+            ctx.stroke();
+
+            // Eixos principals
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(margin, 0); ctx.lineTo(margin, h - margin);
+            ctx.moveTo(margin, h - margin); ctx.lineTo(w, h - margin);
+            ctx.stroke();
+
+            // Etiquetes dels eixos
+            ctx.fillStyle = '#aaa';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(this.titleY, margin + 5, 15);
+            ctx.fillText(this.titleX, w - 60, h - margin - 8);
+
+            if (this.minX !== undefined && this.maxX !== undefined) {
+                ctx.fillText(this.minX.toFixed(1), margin, h - margin + 15);
+                ctx.fillText(this.maxX.toFixed(1), w - 45, h - margin + 15);
+            }
+
+            if (this.minY === undefined || this.maxY === undefined) return;
+
+            let rangeX = (this.maxX - this.minX) || 1;
+            let rangeY = (this.maxY - this.minY) || 1;
+
+            // Dibuix de sèries
+            this.series.forEach(s => {
+                if (s.data.length < 2) return;
+
+                if (s.opt.type === 'scatter') {
+                    ctx.fillStyle = s.opt.marker ? s.opt.marker.color : '#ff4444';
+                    for (var i = 0; i < s.data.length; i += 2) {
+                        var px = margin + ((s.data[i] - this.minX) / rangeX) * (w - margin - 15);
+                        var py = (h - margin) - ((s.data[i+1] - this.minY) / rangeY) * (h - margin - 25);
+                        ctx.beginPath();
+                        ctx.arc(px, py, s.opt.marker.radius || 7, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else {
+                    ctx.beginPath();
+                    ctx.strokeStyle = s.opt.lineColor || '#00ff00';
+                    ctx.lineWidth = s.opt.lineWidth || 2;
+                    for (var i = 0; i < s.data.length; i += 2) {
+                        var px = margin + ((s.data[i] - this.minX) / rangeX) * (w - margin - 15);
+                        var py = (h - margin) - ((s.data[i+1] - this.minY) / rangeY) * (h - margin - 25);
+                        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                    }
+                    ctx.stroke();
+                }
+            });
+        };
+        return G;
+    })();
+
+window.onload = function() {
+    const graph = new Graph("graph-container", "Posició Y (m)", "Posició X (m)");
+    graph.getXAxis().setBoundaries(-6, 8);
+    graph.getYAxis().setBoundaries(-7, 7);
+
+    const rx = 3, ry = 4, centrex = 1, centrey = 0;
+
+    const via = graph.newSerie("via", { lineColor: '#4444ff', lineWidth: 2 });
+    let dadesVia = [];
+    for (let t = 0; t <= 2 * Math.PI + 0.1; t += 0.05) {
+        dadesVia.push(centrex + rx * Math.sin(t), centrey + ry * Math.cos(t));
+    }
+    via.setData(dadesVia);
+
+    const vagoneta = graph.newSerie("vagoneta", { type: 'scatter', marker: { color: '#ff4444', radius: 8 } });
+
+    let x = centrex + rx; 
+    let y = centrey; 
+    let velocitatx = 0; 
+    let velocitaty = 20; 
+    const v_inicial = Math.sqrt(velocitatx * velocitatx + velocitaty * velocitaty);
+    const g = 9.81;
+    
+    const subSteps = 1000; 
+    const augmentdetemps = 0.016 / subSteps; 
+
+    let maxGAssegurada = 1.0;
+
+    function animar() {
+        for (let s = 0; s < subSteps; s++) {
+            let relX = x - centrex;
+            let relY = y - centrey;
+
+            let t_param = Math.atan2(relX / rx, relY / ry);
+
+            let dx = rx * Math.cos(t_param);
+            let dy = -ry * Math.sin(t_param);
+            let ddx = -rx * Math.sin(t_param);
+            let ddy = -ry * Math.cos(t_param);
+            
+            let num = Math.pow(dx * dx + dy * dy, 1.5);
+            let den = Math.abs(dx * ddy - dy * ddx);
+            let R = den > 0.00001 ? num / den : 1000;
+
+            let nx = relX / (rx * rx);
+            let ny = relY / (ry * ry);
+            let nMag = Math.sqrt(nx * nx + ny * ny);
+            let unx = nx / nMag;
+            let uny = ny / nMag;
+
+            let v_sq = velocitatx * velocitatx + velocitaty * velocitaty;
+            let g_n = -g * uny; 
+            let N = (v_sq / R) + g_n;
+
+            let ax = 0, ay = 0;
+            if (N > 0) {
+                ax = -N * unx;
+                ay = -N * uny - g;
+            } else {
+                ax = 0;
+                ay = -g;
+            }
+
+            velocitatx += ax * augmentdetemps;
+            velocitaty += ay * augmentdetemps;
+
+            x += velocitatx * augmentdetemps;
+            y += velocitaty * augmentdetemps;
+
+            if (N > 0) {
+                let dot = velocitatx * unx + velocitaty * uny;
+                velocitatx -= dot * unx;
+                velocitaty -= dot * uny;
+            }
+        }
+
+        let vel_mod = Math.sqrt(velocitatx * velocitatx + velocitaty * velocitaty);
+        
+        let relX_act = x - centrex;
+        let relY_act = y - centrey;
+        let t_param_act = Math.atan2(relX_act / rx, relY_act / ry);
+        let dx_act = rx * Math.cos(t_param_act);
+        let dy_act = -ry * Math.sin(t_param_act);
+        let ddx_act = -rx * Math.sin(t_param_act);
+        let ddy_act = -ry * Math.cos(t_param_act);
+        let num_act = Math.pow(dx_act * dx_act + dy_act * dy_act, 1.5);
+        let den_act = Math.abs(dx_act * ddy_act - dy_act * ddx_act);
+        let R_act = den_act > 0.00001 ? num_act / den_act : 1000;
+        let nx_act = relX_act / (rx * rx);
+        let ny_act = relY_act / (ry * ry);
+        let nMag_act = Math.sqrt(nx_act * nx_act + ny_act * ny_act);
+        let uny_act = ny_act / nMag_act;
+        let N_act = (vel_mod * vel_mod / R_act) - g * uny_act;
+        let forcesG = Math.abs(N_act) / g;
+
+        if (forcesG > maxGAssegurada) {
+            maxGAssegurada = forcesG;
+        }
+
+        marcador.innerText = `v₀: ${v_inicial.toFixed(2)} m/s | v: ${vel_mod.toFixed(2)} m/s | Forces G: ${forcesG.toFixed(2)} g | G Màxima: ${maxGAssegurada.toFixed(2)} g`;
+        
+        vagoneta.setData([x, y]);
+        graph.draw();
+
+        requestAnimationFrame(animar);
+    }
+    animar();
+}
+    </script>
+</body>
+</html>
