@@ -2,194 +2,190 @@
 <html lang="ca">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulació 3D de Muntanya Russa</title>
+    <title>Simulació TdR: Via Paramètrica amb Fricció de Coulomb i Forces G</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #1a1a1a;
-            font-family: sans-serif;
-        }
-        #info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0,0,0,0.7);
-            padding: 10px;
-            border-radius: 8px;
-            pointer-events: none;
-        }
-        h1 {
-            margin: 0 0 5px 0;
-            font-size: 16px;
-        }
-        p {
-            margin: 3px 0;
-            font-size: 12px;
-        }
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 20px; }
+        .container { max-width: 950px; margin: 0 auto; }
+        #graph-container { width: 850px; height: 500px; background: #ffffff; margin: 15px auto; border: 4px solid #555; border-radius: 12px; position: relative; }
+        canvas { width: 100%; height: 100%; border-radius: 8px; }
+        .panel { background: #000; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 1em; color: #00ff00; margin-bottom: 10px; display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .controls { background: #2a2a2a; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
+        label { font-weight: bold; margin-right: 10px; }
+        input[type="range"] { vertical-align: middle; width: 200px; }
+        button { background: #ff4444; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #ff6666; }
     </style>
 </head>
 <body>
 
-    <div id="info">
-        <h1>Simulació 3D</h1>
-        <p>Arrossega amb el ratolí per rotar la càmera.</p>
-        <p>Roda del ratolí per fer zoom.</p>
-        <p id="velocitat">Velocitat: 0 m/s</p>
-        <p id="alcada">Alçada: 0 m</p>
-        <p id="g-actuals">Forces G actuals: 1.00 G</p>
-        <p id="g-maximes">Forces G màximes: 1.00 G</p>
+    <div class="container">
+        <h1>Simulació amb Fricció de Coulomb i Forces G</h1>
+        
+        <div class="controls">
+            <label for="friccioSlider">Coeficient de Fricció (µ): <span id="valMu">0.05</span></label>
+            <input type="range" id="friccioSlider" min="0" max="0.3" step="0.01" value="0.05">
+            <button id="btnReset" style="margin-left: 20px;">Reiniciar Vagó</button>
+        </div>
+
+        <div class="panel">
+            <div id="txtVel">Velocitat: 0.00 m/s</div>
+            <div id="txtG">Força G: 1.00 G</div>
+            <div id="txtMaxG" style="color: #ffff00;">G Màxima: 1.00 G</div>
+            <div id="txtStatus">Estat: En moviment</div>
+        </div>
+
+        <div id="graph-container">
+            <canvas id="simCanvas" width="850" height="500"></canvas>
+        </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
     <script>
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0f172a);
-
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 30, 80); 
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(50, 100, 50);
-        scene.add(dirLight);
-
-
-        const gridHelper = new THREE.GridHelper(150, 60, 0x475569, 0x334155);
-        gridHelper.position.y = -15;
-        scene.add(gridHelper);
-
-        const SCALE_XZ = 2.5; 
-        const SCALE_Y = 1.5; 
-
-        const basePoints = [
-            new THREE.Vector3(0, 12, -20),
-            new THREE.Vector3(15, 0, -10),
-            new THREE.Vector3(20, -5, 10),
-            new THREE.Vector3(0, -2, 20),
-            new THREE.Vector3(-20, 8, 10),
-            new THREE.Vector3(-10, -5, -10)
-        ];
-
-        const controlPoints = basePoints.map(p => new THREE.Vector3(
-            p.x * SCALE_XZ,
-            p.y * SCALE_Y,
-            p.z * SCALE_XZ
-        ));
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
         
-        const trackCurve = new THREE.CatmullRomCurve3(controlPoints, true);
+        const sliderMu = document.getElementById('friccioSlider');
+        const valMu = document.getElementById('valMu');
+        const btnReset = document.getElementById('btnReset');
+        
+        const txtVel = document.getElementById('txtVel');
+        const txtG = document.getElementById('txtG');
+        const txtMaxG = document.getElementById('txtMaxG');
+        const txtStatus = document.getElementById('txtStatus');
 
-        const tubeGeometry = new THREE.TubeGeometry(trackCurve, 300, 0.4, 8, true);
-        const tubeMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x64748b, 
-            roughness: 0.3,
-            metalness: 0.8 
-        });
-        const trackMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
-        scene.add(trackMesh);
+        let t = -6.5; 
+        let dt_par = 0; 
+        const g = 9.81;
+        const subSteps = 200; 
+        const dt = 0.016 / subSteps; 
+        let mu = parseFloat(sliderMu.value);
+        let maxG = 1.0; 
 
-        const cartGeometry = new THREE.BoxGeometry(2, 1.2, 3);
-        const cartMaterial = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2 });
-        const cart = new THREE.Mesh(cartGeometry, cartMaterial);
-        scene.add(cart);
-
-        let t = 0; 
-        const gravity = 9.81;
-        const maxAltitude = 12 * SCALE_Y; 
-        const initialSpeed =20; 
-
-        let maxGForce = 1.0; 
-        let smoothedG = 1.0;
-
-        const clock = new THREE.Clock();
-        const trackLength = trackCurve.getLength();
-
-        const speedText = document.getElementById("velocitat");
-        const altText = document.getElementById("alcada");
-        const gActualsText = document.getElementById("g-actuals");
-        const gMaximesText = document.getElementById("g-maximes");
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const deltaTime = clock.getDelta(); 
-
-            const currentPosition = trackCurve.getPointAt(t);
-            const y = currentPosition.y;
-
-            const speed = Math.sqrt((initialSpeed * initialSpeed) + (2 * gravity * (maxAltitude - y)));
-
-            const tangent = trackCurve.getTangentAt(t).normalize();
-
-            const tangentialAccMagnitude = -gravity * tangent.y;
-            const tangentialAccVector = tangent.clone().multiplyScalar(tangentialAccMagnitude);
-
-            const deltaS = 1.5; 
-            const deltaT = deltaS / trackLength;
-
-            let tAhead = (t + deltaT) % 1;
-            let tBehind = (t - deltaT + 1) % 1;
-
-            const tangentAhead = trackCurve.getTangentAt(tAhead).normalize();
-            const tangentBehind = trackCurve.getTangentAt(tBehind).normalize();
-
-            const curvatureVector = new THREE.Vector3()
-                .subVectors(tangentAhead, tangentBehind)
-                .divideScalar(2 * deltaS);
-
-            const normalAccVector = curvatureVector.multiplyScalar(speed * speed);
-
-            const totalCartAcc = tangentialAccVector.add(normalAccVector);
-            const apparentAcc = new THREE.Vector3(
-                totalCartAcc.x,
-                totalCartAcc.y + gravity,
-                totalCartAcc.z
-            );
-
-            const rawG = apparentAcc.length() / gravity;
-            smoothedG = smoothedG * 0.85 + rawG * 0.15;
-
-            if (smoothedG > maxGForce) {
-                maxGForce = smoothedG;
+        function inicialitzarVelocitat() {
+            t = -6.5;
+            maxG = 1.0; 
+            let dx = 1.4 + 6 * Math.cos(t);
+            let dy = -5 * Math.sin(t);
+            let normaDerivada = Math.sqrt(dx * dx + dy * dy);
+            
+            if (normaDerivada > 0.0001) {
+                dt_par = 15 / normaDerivada;
+            } else {
+                dt_par = 0;
             }
+        }
+        inicialitzarVelocitat();
 
-            speedText.innerText = `Velocitat: ${(speed * 3.6).toFixed(1)} km/h`;
-            altText.innerText = `Alçada: ${y.toFixed(1)} m`;
-            gActualsText.innerText = `Forces G actuals: ${smoothedG.toFixed(2)} G`;
-            gMaximesText.innerText = `Forces G màximes: ${maxGForce.toFixed(2)} G`;
 
-            t += (speed * deltaTime) / trackLength;
-            if (t > 1) t %= 1;
-
-            cart.position.copy(currentPosition);
-            const lookTarget = currentPosition.clone().add(tangent);
-            cart.lookAt(lookTarget);
-
-            controls.update();
-            renderer.render(scene, camera);
+        const viaPoints = [];
+        for (let i = -6.5; i <= 6.5; i += 0.02) {
+            viaPoints.push({
+                x: 1.4 * i + 6 * Math.sin(i),
+                y: 5 * Math.cos(i)
+            });
         }
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        function animar() {
+            let forcesG_actuals = 1.0;
+            let v_real = 0;
+            let quiet = false;
+
+            for (let s = 0; s < subSteps; s++) {
+                let x1 = 1.4 + 6 * Math.cos(t);   
+                let y1 = -5 * Math.sin(t);      
+                let x2 = -6 * Math.sin(t);      
+                let y2 = -5 * Math.cos(t);      
+
+                let den = x1 * x1 + y1 * y1;
+                
+                let ddt_base = (-g * y1 - (dt_par * dt_par) * (x1 * x2 + y1 * y2)) / den;
+
+                let N_sobre_m = (g * x1 + (dt_par * dt_par) * (x2 * y1 - y2 * x1)) / Math.sqrt(den);
+                let N_abs = Math.abs(N_sobre_m);
+
+                forcesG_actuals = N_abs / g;
+
+                if (forcesG_actuals > maxG) {
+                    maxG = forcesG_actuals;
+                }
+
+                let ddt = 0;
+                if (Math.abs(dt_par) > 0.001) {
+                    let ddt_friccio = mu * Math.sign(dt_par) * N_abs / Math.sqrt(den);
+                    ddt = ddt_base - ddt_friccio;
+                } else {
+                    let maxim_estatic = mu * N_abs / Math.sqrt(den);
+                    if (Math.abs(ddt_base) > maxim_estatic) {
+                        ddt = ddt_base - Math.sign(ddt_base) * maxim_estatic;
+                    } else {
+                        ddt = 0;
+                        dt_par = 0;
+                        quiet = true;
+                    }
+                }
+
+                dt_par += ddt * dt;
+                t += dt_par * dt;
+            }
+
+            if (t > 6.5 || dt_par < -12) {
+                inicialitzarVelocitat();
+            }
+
+            let carX = 1.4 * t + 6 * Math.sin(t);
+            let carY = 5 * Math.cos(t);
+            let plotCarX = 425 + carX * 30; 
+            let plotCarY = 250 - carY * 38;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.beginPath();
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 5;
+            for (let i = 0; i < viaPoints.length; i++) {
+                let plotX = 425 + viaPoints[i].x * 30;
+                let plotY = 250 - viaPoints[i].y * 38;
+                if (i === 0) ctx.moveTo(plotX, plotY);
+                else ctx.lineTo(plotX, plotY);
+            }
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.fillStyle = forcesG_actuals > 3.5 ? '#ff0000' : '#0077ff'; 
+            ctx.arc(plotCarX, plotCarY, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            let x1_act = 1.4 + 6 * Math.cos(t);
+            let y1_act = -5 * Math.sin(t);
+            v_real = Math.abs(dt_par) * Math.sqrt(x1_act * x1_act + y1_act * y1_act);
+
+            txtVel.innerText = `Velocitat: ${v_real.toFixed(2)} m/s`;
+            txtG.innerText = `Força G: ${forcesG_actuals.toFixed(2)} G`;
+            txtMaxG.innerText = `G Màxima: ${maxG.toFixed(2)} G`;
+            
+            if (quiet) {
+                txtStatus.innerText = "Estat: Clavat per fricció";
+                txtStatus.style.color = "#ff4444";
+            } else {
+                txtStatus.innerText = "Estat: En moviment";
+                txtStatus.style.color = "#00ff00";
+            }
+
+            requestAnimationFrame(animar);
+        }
+
+        sliderMu.addEventListener('input', (e) => {
+            mu = parseFloat(e.target.value);
+            valMu.innerText = mu.toFixed(2);
         });
 
-        animate();
+        btnReset.addEventListener('click', () => {
+            inicialitzarVelocitat();
+        });
+
+        animar();
     </script>
 </body>
 </html>
