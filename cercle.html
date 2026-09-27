@@ -101,7 +101,6 @@
             let rangeX = (this.maxX - this.minX) || 1;
             let rangeY = (this.maxY - this.minY) || 1;
 
-            // Dibuix de sèries
             this.series.forEach(s => {
                 if (s.data.length < 2) return;
 
@@ -148,7 +147,7 @@ window.onload = function() {
     const vagoneta = graph.newSerie("vagoneta", { type: 'scatter', marker: { color: '#ff4444', radius: 8 } });
 
     let x = 0.0; let y = -5.0; 
-    let velocitatx = 17; let velocitaty = 0.0; 
+    let velocitatx = 16; let velocitaty = 0.0; 
     const v_inicial = Math.sqrt(velocitatx * velocitatx + velocitaty * velocitaty);
     const g = 9.81;
 
