@@ -26,26 +26,23 @@
         const canvas = document.getElementById('simCanvas');
         const ctx = canvas.getContext('2d');
         
-        // --- 1. ESTAT INICIAL ---
         let t = -6.5; 
         const g = 9.81;
         const subSteps = 200; 
         const dt = 0.016 / subSteps; 
         let dt_par = 0;
         let maxG = 1.0;
-
-        // Càlcul de velocitat inicial per començar exactament a 2 m/s
+        
         function inicialitzarVelocitat() {
             t = -6.5;
             maxG = 1.0;
             let dx_inici = 1.4 + 6 * Math.cos(t);
             let dy_inici = -5 * Math.sin(t);
             let norma = Math.sqrt(dx_inici * dx_inici + dy_inici * dy_inici);
-            dt_par = norma > 0.0001 ? 2.0 / norma : 0;
+            dt_par = norma > 0.0001 ? 2/ norma : 0;
         }
         inicialitzarVelocitat();
 
-        // --- 2. PRECALCUL DE LA VIA ---
         const viaPoints = [];
         for (let i = -6.5; i <= 6.5; i += 0.02) {
             viaPoints.push({
@@ -54,21 +51,20 @@
             });
         }
 
-        // --- 3. BUCLE D'ANIMACIÓ ---
+
         function animar() {
             let forcesG_actuals = 1.0;
             
             for (let s = 0; s < subSteps; s++) {
-                // Derivades per a x(t) = 1.4t + 6*sin(t), y(t) = 5*cos(t)
-                let x1 = 1.4 + 6 * Math.cos(t);   // x'
-                let y1 = -5 * Math.sin(t);      // y'
-                let x2 = -6 * Math.sin(t);      // x''
-                let y2 = -5 * Math.cos(t);      // y''
+                let x1 = 1.4 + 6 * Math.cos(t);   
+                let y1 = -5 * Math.sin(t);      
+                let x2 = -6 * Math.sin(t);      
+                let y2 = -5 * Math.cos(t);      
 
                 let den = x1 * x1 + y1 * y1;
                 let ddt = (-g * y1 - (dt_par * dt_par) * (x1 * x2 + y1 * y2)) / den;
 
-                // Càlcul de la força normal i G verticals
+
                 let N_sobre_m = (g * x1 + (dt_par * dt_par) * (x2 * y1 - y2 * x1)) / Math.sqrt(den);
                 forcesG_actuals = Math.abs(N_sobre_m) / g;
 
@@ -80,15 +76,13 @@
                 t += dt_par * dt;
             }
 
-            // Reinici si el vagó arriba al final del circuit establert
+
             if (t > 6.5 || dt_par < -12) { 
                 inicialitzarVelocitat();
             }
 
-            // Netejar la pantalla
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // --- DIBUIXAR LA VIA ---
             ctx.beginPath();
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 4;
@@ -101,7 +95,6 @@
             }
             ctx.stroke();
 
-            // --- DIBUIXAR EL VAGÓ ---
             let carX = 1.4 * t + 6 * Math.sin(t);
             let carY = 5 * Math.cos(t);
             let plotCarX = 425 + carX * 30;
@@ -115,12 +108,10 @@
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Càlcul de la velocitat real
             let x1_actual = 1.4 + 6 * Math.cos(t);
             let y1_actual = -5 * Math.sin(t);
             let v_real = Math.abs(dt_par) * Math.sqrt(x1_actual * x1_actual + y1_actual * y1_actual);
 
-            // Actualització del panell
             document.getElementById('txtVel').innerText = `v: ${v_real.toFixed(2)} m/s`;
             document.getElementById('txtG').innerText = `Força G: ${forcesG_actuals.toFixed(2)} G`;
             document.getElementById('txtMaxG').innerText = `G Màxima: ${maxG.toFixed(2)} G`;
@@ -128,7 +119,6 @@
             requestAnimationFrame(animar);
         }
         
-        // Executar l'animació
         animar();
     </script>
 </body>
