@@ -65,12 +65,12 @@
         let posX = -5.5;
         let velX = 0;
         const g = 100;
-        const mu = 0.12; 
+        const mu = 0.00; 
         const dt = 0.016;
 
-        let maxGForce = 1.0; // Variable per registrar les G màximes
+        let maxGForce = 1.0; 
 
-        // Historial acumulat sense límit de punts
+
         const historial = [];
 
         function calcularFriccio(x, vx) {
@@ -78,11 +78,9 @@
             let velReal = Math.abs(vx * Math.sqrt(1 + pendent * pendent));
             let normal = g / Math.sqrt(1 + pendent * pendent);
             
-            // Càlcul del radi de curvatura per a y = x^2 -> R = (1 + y'²)^(3/2) / |y''|
             let rCurvatura = Math.pow(1 + pendent * pendent, 1.5) / 2;
             let aCentripeta = (velReal * velReal) / rCurvatura;
             
-            // Força G total (acceleració normal total dividida per la gravetat base g)
             let gForce = (normal + aCentripeta) / g;
 
             let potencia = (mu * normal) * velReal;
@@ -92,7 +90,6 @@
         function animar() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // EIXOS I FONS DE LA GRÀFICA
             let origen = toPx(0, 0);
             ctx.strokeStyle = '#252525';
             ctx.lineWidth = 1;
@@ -119,7 +116,6 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // VIA AMB GRADIENT
             for (let x = -6; x <= 6; x += 0.05) {
                 let p1 = toPx(x, x * x);
                 let p2 = toPx(x + 0.05, (x + 0.05) * (x + 0.05));
@@ -139,10 +135,8 @@
                 ctx.stroke();
             }
 
-            // FÍSICA
             let fActual = calcularFriccio(posX, velX);
             
-            // Actualitzar el màxim de Forces G registrades
             if (fActual.gForce > maxGForce) {
                 maxGForce = fActual.gForce;
             }
@@ -161,10 +155,8 @@
             velX += accX * dt;
             posX += velX * dt;
 
-            // Enregistrar el punt
             historial.push({ x: posX, potencia: fActual.potencia });
 
-            // DIBUIXAR TOTA LA CORBA ACUMULADA (Línia permanent)
             ctx.beginPath();
             ctx.strokeStyle = '#ff0044';
             ctx.lineWidth = 3.5;
@@ -175,7 +167,6 @@
             }
             ctx.stroke();
 
-            // BARRA INDICADORA SOBRE LA VAGONETA
             let posPx = toPx(posX, posX * posX);
             let ràtioBarra = Math.min(1, fActual.potencia / MAX_POTENCIA_ZOOM);
             let alçadaBarra = ràtioBarra * 90;
@@ -187,13 +178,11 @@
             ctx.font = 'bold 12px sans-serif';
             ctx.fillText(`${Math.round(fActual.potencia)} W`, posPx.x - 20, posPx.y - 16 - alçadaBarra);
 
-            // VAGONETA
             ctx.beginPath();
             ctx.arc(posPx.x, posPx.y, 7, 0, Math.PI * 2);
             ctx.fillStyle = '#00e5ff';
             ctx.fill();
 
-            // ETIQUETES
             ctx.fillStyle = '#777777';
             ctx.font = '11px sans-serif';
             ctx.fillText("Trajectòria y = x²", 45, 25);
